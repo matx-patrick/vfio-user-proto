@@ -1,5 +1,5 @@
 [workspace]
-members = ["vfio-bindings", "vfio-ioctls", "vfio-user"]
+members = ["vfio-bindings", "vfio-user"]
 resolver = "2"
 
 [workspace.dependencies]
