@@ -7,7 +7,7 @@ use argh::FromArgs;
 use log::info;
 use pci::{PciBarConfiguration, PciSubclass};
 use std::{fs::File, io::Write, mem::size_of, num::Wrapping, path::PathBuf};
-use vfio_bindings::bindings::vfio::{
+use vfio_bindings::{
     vfio_region_info, VFIO_IRQ_INFO_EVENTFD, VFIO_IRQ_SET_ACTION_TRIGGER,
     VFIO_IRQ_SET_DATA_EVENTFD, VFIO_PCI_BAR2_REGION_INDEX, VFIO_PCI_CONFIG_REGION_INDEX,
     VFIO_PCI_INTX_IRQ_INDEX, VFIO_PCI_NUM_IRQS, VFIO_PCI_NUM_REGIONS, VFIO_REGION_INFO_FLAG_READ,

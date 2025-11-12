@@ -17,7 +17,7 @@ use std::os::unix::{
 };
 use std::path::Path;
 use thiserror::Error;
-use vfio_bindings::bindings::vfio::*;
+use vfio_bindings::*;
 use vm_memory::{ByteValued, FileOffset};
 use vmm_sys_util::sock_ctrl_msg::ScmSocket;
 
