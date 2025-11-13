@@ -1,5 +1,5 @@
 [package]
-name = "vfio_user"
+name = "vfio_user_server"
 version = "0.1.2"
 authors = ["The Cloud Hypervisor Authors"]
 edition = "2021"
@@ -11,14 +11,14 @@ repository = "https://github.com/rust-vmm/vfio-user"
 name = "gpio"
 
 [dependencies]
-bitflags = "2.9.4"
+vfio-user-proto.workspace = true
+vfio-bindings.workspace = true
+zerocopy.workspace = true
 libc = "0.2.139"
 log = "0.4.17"
-serde = { version = "1.0.151", features = ["rc"] }
-serde_derive = "1.0.149"
+serde.workspace = true
 serde_json = "1.0.93"
 thiserror = { workspace = true }
-vfio-bindings = { version = "=0.6.1", path = "../vfio-bindings" }
 vm-memory = { version = "0.16.0", features = [
   "backend-mmap",
   "backend-atomic",

@@ -6,6 +6,7 @@
 #![allow(non_snake_case)]
 
 use ::std::os::raw::c_uint;
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub const VFIO_API_VERSION: u32 = 0;
 pub const VFIO_TYPE1_IOMMU: u32 = 1;
@@ -230,7 +231,7 @@ pub struct vfio_device_info_cap_pci_atomic_comp {
 }
 
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, PartialEq)]
+#[derive(Debug, Default, Copy, Clone, PartialEq, FromBytes, IntoBytes, Immutable)]
 pub struct vfio_region_info {
     pub argsz: u32,
     pub flags: u32,

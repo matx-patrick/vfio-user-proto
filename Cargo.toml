@@ -1,7 +1,13 @@
 [workspace]
-members = ["vfio-bindings", "vfio-user"]
+members = ["vfio-bindings", "vfio-user-proto", "vfio-user-server"]
 resolver = "2"
 
 [workspace.dependencies]
+vfio-bindings.path = "./vfio-bindings"
+vfio-user-proto.path = "./vfio-user-proto"
+
+bitflags = "2.9.4"
 thiserror = "2.0.16"
+serde = { version = "1", features = ["derive"] }
 vmm-sys-util = "0.15.0"
+zerocopy = { version = "0.8.27", features = ["derive"] }
