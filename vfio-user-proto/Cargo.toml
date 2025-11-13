@@ -13,8 +13,3 @@ strum = { version = "0.27.2", features = ["derive"] }
 bitflags.workspace = true
 serde.workspace = true
 vfio-bindings.workspace = true
-vm-memory = { version = "0.16.0", features = [
-  "backend-mmap",
-  "backend-atomic",
-] }
-vmm-sys-util = { workspace = true }

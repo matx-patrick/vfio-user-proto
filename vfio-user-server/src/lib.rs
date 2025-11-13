@@ -155,7 +155,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::Version.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: (size_of::<Version>() + version_data.len() + 1) as u32,
                 ..Default::default()
             },
@@ -219,7 +219,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::DmaMap.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<DmaMap>() as u32,
                 ..Default::default()
             },
@@ -249,7 +249,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::DmaUnmap.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<DmaUnmap>() as u32,
                 ..Default::default()
             },
@@ -278,7 +278,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::DeviceReset.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<DeviceReset>() as u32,
                 ..Default::default()
             },
@@ -303,7 +303,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::DeviceGetInfo.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<DeviceGetInfo>() as u32,
                 ..Default::default()
             },
@@ -362,7 +362,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::DeviceGetRegionInfo.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: std::mem::size_of::<DeviceGetRegionInfo>() as u32,
                 ..Default::default()
             },
@@ -497,7 +497,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::RegionRead.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<RegionAccess>() as u32,
                 ..Default::default()
             },
@@ -525,7 +525,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::RegionWrite.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: (size_of::<RegionAccess>() + data.len()) as u32,
                 ..Default::default()
             },
@@ -557,7 +557,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::GetIrqInfo.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<GetIrqInfo>() as u32,
                 ..Default::default()
             },
@@ -598,7 +598,7 @@ impl Client {
             header: Header {
                 message_id: self.next_message_id.0,
                 command: Command::SetIrqs.into(),
-                flags: HeaderFlags::Command as u32,
+                flags: HeaderFlags::command().into(),
                 message_size: size_of::<SetIrqs>() as u32,
                 ..Default::default()
             },
@@ -754,7 +754,7 @@ impl Server {
                     header: Header {
                         message_id: client_version.header.message_id,
                         command: Command::Version.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: (size_of::<Version>() + server_version_data.len() + 1) as u32,
                         ..Default::default()
                     },
@@ -807,7 +807,7 @@ impl Server {
                 let reply = Header {
                     message_id: cmd.header.message_id,
                     command: Command::DmaMap.into(),
-                    flags: HeaderFlags::Reply as u32,
+                    flags: HeaderFlags::reply().into(),
                     message_size: size_of::<Header>() as u32,
                     ..Default::default()
                 };
@@ -836,7 +836,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::DmaUnmap.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DmaUnmap>() as u32,
                         ..Default::default()
                     },
@@ -862,7 +862,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::DeviceGetInfo.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DeviceGetInfo>() as u32,
                         ..Default::default()
                     },
@@ -899,7 +899,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::DeviceGetRegionInfo.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DeviceGetRegionInfo>() as u32,
                         ..Default::default()
                     },
@@ -928,7 +928,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::GetIrqInfo.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<GetIrqInfo>() as u32,
                         ..Default::default()
                     },
@@ -965,7 +965,7 @@ impl Server {
                 let reply = Header {
                     message_id: cmd.header.message_id,
                     command: Command::SetIrqs.into(),
-                    flags: HeaderFlags::Reply as u32,
+                    flags: HeaderFlags::reply().into(),
                     message_size: size_of::<Header>() as u32,
                     ..Default::default()
                 };
@@ -997,7 +997,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::RegionRead.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<RegionAccess>() as u32 + count,
                         ..Default::default()
                     },
@@ -1035,7 +1035,7 @@ impl Server {
                     header: Header {
                         message_id: cmd.header.message_id,
                         command: Command::RegionWrite.into(),
-                        flags: HeaderFlags::Reply as u32,
+                        flags: HeaderFlags::reply().into(),
                         message_size: size_of::<RegionAccess>() as u32,
                         ..Default::default()
                     },
@@ -1052,7 +1052,7 @@ impl Server {
                 let reply = Header {
                     message_id: header.message_id,
                     command: Command::DeviceReset.into(),
-                    flags: HeaderFlags::Reply as u32,
+                    flags: HeaderFlags::reply().into(),
                     message_size: size_of::<Header>() as u32,
                     ..Default::default()
                 };
@@ -1104,7 +1104,7 @@ impl Server {
                 let reply = Header {
                     message_id: header.message_id,
                     command: header.command,
-                    flags: HeaderFlags::Error as u32,
+                    flags: HeaderFlags::reply().with_error(true).into(),
                     message_size: size_of::<Header>() as u32,
                     error: if matches!(e, Error::InvalidInput) {
                         EINVAL as u32

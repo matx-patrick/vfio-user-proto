@@ -42,14 +42,61 @@ impl TryFrom<u16> for Command {
     }
 }
 
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, IntoBytes, Immutable)]
-pub enum HeaderFlags {
-    #[default]
+const HEADER_MASK_TYPE: u32 = 0b111;
+const HEADER_FLAG_NO_REPLY: u32 = 1 << 4;
+const HEADER_FLAG_ERROR: u32 = 1 << 5;
+
+#[derive(FromRepr)]
+#[repr(u8)]
+pub enum HeaderType {
     Command = 0,
     Reply = 1,
-    NoReply = 1 << 4,
-    Error = 1 << 5,
+}
+pub struct HeaderFlags {
+    pub ty: HeaderType,
+    pub no_reply: bool,
+    pub error: bool,
+}
+impl HeaderFlags {
+    pub const fn command() -> Self {
+        Self {
+            ty: HeaderType::Command,
+            no_reply: false,
+            error: false,
+        }
+    }
+    pub const fn reply() -> Self {
+        Self {
+            ty: HeaderType::Reply,
+            no_reply: false,
+            error: false,
+        }
+    }
+    pub const fn with_error(self, error: bool) -> Self {
+        Self { error, ..self }
+    }
+    pub const fn with_no_reply(self, no_reply: bool) -> Self {
+        Self { no_reply, ..self }
+    }
+}
+impl TryFrom<u32> for HeaderFlags {
+    type Error = u32;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        let ty = HeaderType::from_repr((value & HEADER_MASK_TYPE) as u8).ok_or(value)?;
+        Ok(Self {
+            ty,
+            no_reply: (value & HEADER_FLAG_NO_REPLY) != 0,
+            error: (value & HEADER_FLAG_ERROR) != 0,
+        })
+    }
+}
+impl From<HeaderFlags> for u32 {
+    fn from(value: HeaderFlags) -> Self {
+        (value.ty as u32)
+            | value.no_reply.then_some(HEADER_FLAG_NO_REPLY).unwrap_or(0)
+            | value.error.then_some(HEADER_FLAG_ERROR).unwrap_or(0)
+    }
 }
 
 #[repr(C)]
