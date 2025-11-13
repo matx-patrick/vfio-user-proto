@@ -13,7 +13,7 @@ use vfio_bindings::{
     VFIO_PCI_INTX_IRQ_INDEX, VFIO_PCI_NUM_IRQS, VFIO_PCI_NUM_REGIONS, VFIO_REGION_INFO_FLAG_READ,
     VFIO_REGION_INFO_FLAG_WRITE,
 };
-use vfio_user::{IrqInfo, Server, ServerBackend};
+use vfio_user_server::{IrqInfo, Server, ServerBackend};
 
 mod pci;
 
@@ -144,7 +144,7 @@ impl ServerBackend for TestBackend {
 
     fn dma_map(
         &mut self,
-        flags: vfio_user::DmaMapFlags,
+        flags: vfio_user_proto::DmaMapFlags,
         offset: u64,
         address: u64,
         size: u64,
@@ -156,7 +156,7 @@ impl ServerBackend for TestBackend {
 
     fn dma_unmap(
         &mut self,
-        flags: vfio_user::DmaUnmapFlags,
+        flags: vfio_user_proto::DmaUnmapFlags,
         address: u64,
         size: u64,
     ) -> Result<(), std::io::Error> {

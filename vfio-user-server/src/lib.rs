@@ -4,9 +4,7 @@
 //
 
 use libc::{c_void, iovec, EINVAL};
-use libc::{sysconf, _SC_PAGESIZE};
 use log::*;
-use serde::{Deserialize, Serialize};
 use std::ffi::CString;
 use std::fs::File;
 use std::io::{IoSlice, Read, Write};
@@ -24,48 +22,11 @@ use vm_memory::FileOffset;
 use vmm_sys_util::sock_ctrl_msg::ScmSocket;
 use zerocopy::IntoBytes;
 
-const fn default_max_msg_fds() -> u32 {
-    1
-}
-
-const fn default_max_data_xfer_size() -> u32 {
-    1048576
-}
-
-#[inline(always)]
-fn pagesize() -> u32 {
-    // SAFETY: sysconf
-    unsafe { sysconf(_SC_PAGESIZE) as u32 }
-}
-
-fn default_migration_capabilities() -> MigrationCapabilities {
-    MigrationCapabilities { pgsize: pagesize() }
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct Capabilities {
-    #[serde(default = "default_max_msg_fds")]
-    max_msg_fds: u32,
-    #[serde(default = "default_max_data_xfer_size")]
-    max_data_xfer_size: u32,
-    #[serde(default = "default_migration_capabilities")]
-    migration: MigrationCapabilities,
-}
-
-#[derive(Serialize, Deserialize, Debug, Default)]
-struct CapabilitiesData {
-    capabilities: Capabilities,
-}
-
-impl Default for Capabilities {
-    fn default() -> Self {
-        Self {
-            max_msg_fds: default_max_msg_fds(),
-            max_data_xfer_size: default_max_data_xfer_size(),
-            migration: default_migration_capabilities(),
-        }
-    }
-}
+const SERVER_DEFAULT_CAPS: Capabilities = Capabilities {
+    max_msg_fds: Some(1),
+    max_data_xfer_size: Some(1024 * 1024),
+    migration: None,
+};
 
 pub struct Client {
     stream: UnixStream,
@@ -147,7 +108,9 @@ impl Client {
     }
 
     fn negotiate_version(&mut self) -> Result<(), Error> {
-        let caps = CapabilitiesData::default();
+        let caps = VersionData {
+            capabilities: Some(SERVER_DEFAULT_CAPS),
+        };
 
         let version_data = serde_json::to_string(&caps).map_err(Error::SerializeCapabilites)?;
 
@@ -159,8 +122,7 @@ impl Client {
                 message_size: (size_of::<Version>() + version_data.len() + 1) as u32,
                 ..Default::default()
             },
-            major: 0,
-            minor: 1,
+            payload: VersionPayload { major: 0, minor: 1 },
         };
         debug!("Command: {version:?}");
 
@@ -178,7 +140,7 @@ impl Client {
 
         debug!(
             "Sent client version information: major = {} minor = {} capabilities = {:?}",
-            version.major, version.minor, &caps.capabilities
+            version.payload.major, version.payload.minor, &caps.capabilities
         );
 
         self.next_message_id += Wrapping(1);
@@ -196,13 +158,13 @@ impl Client {
             .read_exact(server_version_data.as_mut_bytes())
             .map_err(Error::StreamRead)?;
 
-        let server_caps: CapabilitiesData =
+        let server_caps: VersionData =
             serde_json::from_slice(&server_version_data[0..server_version_data.len() - 1])
                 .map_err(Error::DeserializeCapabilites)?;
 
         debug!(
             "Received server version information: major = {} minor = {} capabilities = {:?}",
-            server_version.major, server_version.minor, &server_caps.capabilities
+            server_version.payload.major, server_version.payload.minor, &server_caps.capabilities
         );
 
         Ok(())
@@ -223,11 +185,13 @@ impl Client {
                 message_size: size_of::<DmaMap>() as u32,
                 ..Default::default()
             },
-            argsz: (size_of::<DmaMap>() - size_of::<Header>()) as u32,
-            flags: DmaMapFlags::READ_WRITE.bits(),
-            offset,
-            address,
-            size,
+            payload: DmaMapPayload {
+                argsz: size_of::<DmaMapPayload>() as u32,
+                flags: DmaMapFlags::READ_WRITE.bits(),
+                offset,
+                address,
+                size,
+            },
         };
         debug!("Command: {dma_map:?}");
         self.next_message_id += Wrapping(1);
@@ -253,10 +217,12 @@ impl Client {
                 message_size: size_of::<DmaUnmap>() as u32,
                 ..Default::default()
             },
-            argsz: (size_of::<DmaUnmap>() - size_of::<Header>()) as u32,
-            flags: 0,
-            address,
-            size,
+            payload: DmaUnmapPayload {
+                argsz: size_of::<DmaUnmapPayload>() as u32,
+                flags: 0,
+                address,
+                size,
+            },
         };
         debug!("Command: {dma_unmap:?}");
         self.next_message_id += Wrapping(1);
@@ -307,8 +273,10 @@ impl Client {
                 message_size: size_of::<DeviceGetInfo>() as u32,
                 ..Default::default()
             },
-            argsz: size_of::<DeviceGetInfo>() as u32,
-            ..Default::default()
+            payload: DeviceGetInfoPayload {
+                argsz: size_of::<DeviceGetInfoPayload>() as u32,
+                ..Default::default()
+            },
         };
         debug!("Command: {get_info:?}");
         self.next_message_id += Wrapping(1);
@@ -317,10 +285,11 @@ impl Client {
             .write_all(get_info.as_bytes())
             .map_err(Error::StreamWrite)?;
 
-        let mut reply = DeviceGetInfo::default();
+        let mut replymsg = DeviceGetInfo::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(replymsg.as_mut_bytes())
             .map_err(Error::StreamRead)?;
+        let reply = &replymsg.payload;
         debug!("Reply: {reply:?}");
         self.num_irqs = reply.num_irqs;
 
@@ -366,7 +335,7 @@ impl Client {
                 message_size: std::mem::size_of::<DeviceGetRegionInfo>() as u32,
                 ..Default::default()
             },
-            region_info: vfio_region_info {
+            payload: vfio_region_info {
                 argsz: size_of::<vfio_region_info>() as u32,
                 index,
                 ..Default::default()
@@ -387,8 +356,8 @@ impl Client {
         debug!("Reply: {reply:?}");
 
         // Retrieve the region info again with capabilities if needed
-        if reply.region_info.argsz > std::mem::size_of::<vfio_region_info>() as u32 {
-            get_region_info.region_info.argsz = reply.region_info.argsz;
+        if reply.payload.argsz > std::mem::size_of::<vfio_region_info>() as u32 {
+            get_region_info.payload.argsz = reply.payload.argsz;
             debug!("Command: {get_region_info:?}");
             self.next_message_id += Wrapping(1);
 
@@ -403,7 +372,7 @@ impl Client {
                 .map_err(Error::ReceiveWithFd)?;
             debug!("Reply: {reply:?}");
 
-            let cap_size = reply.region_info.argsz - std::mem::size_of::<vfio_region_info>() as u32;
+            let cap_size = reply.payload.argsz - std::mem::size_of::<vfio_region_info>() as u32;
             assert_eq!(
                 cap_size,
                 reply.header.message_size - size_of::<DeviceGetRegionInfo>() as u32
@@ -413,11 +382,11 @@ impl Client {
                 .read_exact(cap_data.as_mut_bytes())
                 .map_err(Error::StreamRead)?;
 
-            let sparse_areas = Self::parse_region_caps(&cap_data, &reply.region_info)?;
+            let sparse_areas = Self::parse_region_caps(&cap_data, &reply.payload)?;
 
-            Ok((reply.region_info, fd, sparse_areas))
+            Ok((reply.payload, fd, sparse_areas))
         } else {
-            Ok((reply.region_info, fd, Vec::new()))
+            Ok((reply.payload, fd, Vec::new()))
         }
     }
 
@@ -501,9 +470,11 @@ impl Client {
                 message_size: size_of::<RegionAccess>() as u32,
                 ..Default::default()
             },
-            offset,
-            count: data.len() as u32,
-            region,
+            payload: RegionAccessPayload {
+                offset,
+                count: data.len() as u32,
+                region,
+            },
         };
         debug!("Command: {region_read:?}");
         self.next_message_id += Wrapping(1);
@@ -529,9 +500,11 @@ impl Client {
                 message_size: (size_of::<RegionAccess>() + data.len()) as u32,
                 ..Default::default()
             },
-            offset,
-            count: data.len() as u32,
-            region,
+            payload: RegionAccessPayload {
+                offset,
+                count: data.len() as u32,
+                region,
+            },
         };
         debug!("Command: {region_write:?}");
         self.next_message_id += Wrapping(1);
@@ -561,10 +534,12 @@ impl Client {
                 message_size: size_of::<GetIrqInfo>() as u32,
                 ..Default::default()
             },
-            argsz: (size_of::<GetIrqInfo>() - size_of::<Header>()) as u32,
-            flags: 0,
-            index,
-            count: 0,
+            payload: GetIrqInfoPayload {
+                argsz: size_of::<GetIrqInfoPayload>() as u32,
+                flags: 0,
+                index,
+                count: 0,
+            },
         };
         debug!("Command: {get_irq_info:?}");
         self.next_message_id += Wrapping(1);
@@ -573,10 +548,11 @@ impl Client {
             .write_all(get_irq_info.as_bytes())
             .map_err(Error::StreamWrite)?;
 
-        let mut reply = GetIrqInfo::default();
+        let mut replymsg = GetIrqInfo::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(replymsg.as_mut_bytes())
             .map_err(Error::StreamRead)?;
+        let reply = &replymsg.payload;
         debug!("Reply: {reply:?}");
 
         Ok(IrqInfo {
@@ -602,11 +578,13 @@ impl Client {
                 message_size: size_of::<SetIrqs>() as u32,
                 ..Default::default()
             },
-            argsz: (size_of::<SetIrqs>() - size_of::<Header>()) as u32,
-            flags,
-            start,
-            index,
-            count,
+            payload: SetIrqsPayload {
+                argsz: size_of::<SetIrqsPayload>() as u32,
+                flags,
+                start,
+                index,
+                count,
+            },
         };
         debug!("Command: {set_irqs:?}");
         self.next_message_id += Wrapping(1);
@@ -721,12 +699,9 @@ impl Server {
             }
             Command::Version => {
                 // TODO: Make version/capabilities configurable
-                let mut client_version = Version {
-                    header,
-                    ..Default::default()
-                };
+                let mut client_version = VersionPayload::default();
                 stream
-                    .read_exact(&mut client_version.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(client_version.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
                 let mut raw_version_data =
@@ -738,28 +713,26 @@ impl Server {
                     .unwrap()
                     .to_string_lossy()
                     .into_owned();
-                let client_capabilities: CapabilitiesData =
-                    serde_json::from_str(&client_version_data)
-                        .map_err(Error::DeserializeCapabilites)?;
+                let client_capabilities: VersionData = serde_json::from_str(&client_version_data)
+                    .map_err(Error::DeserializeCapabilites)?;
 
                 info!(
                     "Received client version: major = {} minor = {} capabilities = {:?}",
                     client_version.major, client_version.minor, client_capabilities.capabilities,
                 );
 
-                let server_capabilities = CapabilitiesData::default();
+                let server_capabilities = VersionData::default();
                 let server_version_data = serde_json::to_string(&server_capabilities)
                     .map_err(Error::SerializeCapabilites)?;
                 let server_version = Version {
                     header: Header {
-                        message_id: client_version.header.message_id,
+                        message_id: header.message_id,
                         command: Command::Version.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: (size_of::<Version>() + server_version_data.len() + 1) as u32,
                         ..Default::default()
                     },
-                    major: 0,
-                    minor: 0,
+                    payload: VersionPayload { major: 0, minor: 0 },
                 };
 
                 let server_version_data = CString::new(server_version_data.as_bytes()).unwrap();
@@ -774,16 +747,15 @@ impl Server {
 
                 info!(
                     "Sent server version: major = {} minor = {} capabilities = {:?}",
-                    server_version.major, server_version.minor, server_capabilities.capabilities
+                    server_version.payload.major,
+                    server_version.payload.minor,
+                    server_capabilities.capabilities
                 );
             }
             Command::DmaMap => {
-                let mut cmd = DmaMap {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = DmaMapPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
                 let mut fds = fds;
@@ -796,16 +768,16 @@ impl Server {
 
                 backend
                     .dma_map(
-                        DmaMapFlags::from_bits_truncate(cmd.flags),
-                        cmd.offset,
-                        cmd.address,
-                        cmd.size,
+                        DmaMapFlags::from_bits_truncate(payload.flags),
+                        payload.offset,
+                        payload.address,
+                        payload.size,
                         fds.pop(),
                     )
                     .map_err(Error::Backend)?;
 
                 let reply = Header {
-                    message_id: cmd.header.message_id,
+                    message_id: header.message_id,
                     command: Command::DmaMap.into(),
                     flags: HeaderFlags::reply().into(),
                     message_size: size_of::<Header>() as u32,
@@ -816,154 +788,146 @@ impl Server {
                     .map_err(Error::StreamWrite)?;
             }
             Command::DmaUnmap => {
-                let mut cmd = DmaUnmap {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = DmaUnmapPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
                 backend
                     .dma_unmap(
-                        DmaUnmapFlags::from_bits_truncate(cmd.flags),
-                        cmd.address,
-                        cmd.size,
+                        DmaUnmapFlags::from_bits_truncate(payload.flags),
+                        payload.address,
+                        payload.size,
                     )
                     .map_err(Error::Backend)?;
 
                 let reply = DmaUnmap {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::DmaUnmap.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DmaUnmap>() as u32,
                         ..Default::default()
                     },
-                    argsz: cmd.argsz,
-                    flags: cmd.flags,
-                    address: cmd.address,
-                    size: cmd.size,
+                    payload,
                 };
                 stream
                     .write_all(reply.as_bytes())
                     .map_err(Error::StreamWrite)?;
             }
             Command::DeviceGetInfo => {
-                let mut cmd = DeviceGetInfo {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = DeviceGetInfoPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
                 let reply = DeviceGetInfo {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::DeviceGetInfo.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DeviceGetInfo>() as u32,
                         ..Default::default()
                     },
-                    argsz: size_of::<DeviceGetInfo>() as u32 - size_of::<Header>() as u32,
-                    // TODO: Consider non-PCI devices
-                    flags: VFIO_DEVICE_FLAGS_PCI
-                        | if self.resettable {
-                            VFIO_DEVICE_FLAGS_RESET
-                        } else {
-                            0
-                        },
-                    num_regions: self.regions.len() as u32,
-                    num_irqs: self.irqs.len() as u32,
+                    payload: DeviceGetInfoPayload {
+                        argsz: size_of::<DeviceGetInfoPayload>() as u32,
+                        // TODO: Consider non-PCI devices
+                        flags: VFIO_DEVICE_FLAGS_PCI
+                            | if self.resettable {
+                                VFIO_DEVICE_FLAGS_RESET
+                            } else {
+                                0
+                            },
+                        num_regions: self.regions.len() as u32,
+                        num_irqs: self.irqs.len() as u32,
+                    },
                 };
                 stream
                     .write_all(reply.as_bytes())
                     .map_err(Error::StreamWrite)?;
             }
             Command::DeviceGetRegionInfo => {
-                let mut cmd = DeviceGetRegionInfo {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = vfio_region_info::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
-                if cmd.region_info.index as usize >= self.regions.len() {
+                if payload.index as usize >= self.regions.len() {
                     return Err(Error::InvalidInput);
                 }
 
                 // TODO: Need to handle region capabilities e.g. sparse regions
                 let reply = DeviceGetRegionInfo {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::DeviceGetRegionInfo.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: size_of::<DeviceGetRegionInfo>() as u32,
                         ..Default::default()
                     },
-                    region_info: self.regions[cmd.region_info.index as usize],
+                    payload: self.regions[payload.index as usize],
                 };
                 stream
                     .write_all(reply.as_bytes())
                     .map_err(Error::StreamWrite)?;
             }
             Command::GetIrqInfo => {
-                let mut cmd = GetIrqInfo {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = GetIrqInfoPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
-                if cmd.index as usize >= self.irqs.len() {
+                if payload.index as usize >= self.irqs.len() {
                     return Err(Error::InvalidInput);
                 }
 
-                let irq = &self.irqs[cmd.index as usize];
+                let irq = &self.irqs[payload.index as usize];
 
                 let reply = GetIrqInfo {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::GetIrqInfo.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: size_of::<GetIrqInfo>() as u32,
                         ..Default::default()
                     },
-                    argsz: (size_of::<GetIrqInfo>() - size_of::<Header>()) as u32,
-                    index: irq.index,
-                    flags: irq.flags,
-                    count: irq.count,
+                    payload: GetIrqInfoPayload {
+                        argsz: size_of::<GetIrqInfoPayload>() as u32,
+                        index: irq.index,
+                        flags: irq.flags,
+                        count: irq.count,
+                    },
                 };
                 stream
                     .write_all(reply.as_bytes())
                     .map_err(Error::StreamWrite)?;
             }
             Command::SetIrqs => {
-                let mut cmd = SetIrqs {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = SetIrqsPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
-                if cmd.index as usize >= self.irqs.len() {
+                if payload.index as usize >= self.irqs.len() {
                     return Err(Error::InvalidInput);
                 }
 
-                if cmd.flags & VFIO_IRQ_SET_DATA_BOOL > 0 {
+                if payload.flags & VFIO_IRQ_SET_DATA_BOOL > 0 {
                     return Err(Error::UnsupportedFeature);
                 }
 
                 backend
-                    .set_irqs(cmd.index, cmd.flags, cmd.start, cmd.count, fds)
+                    .set_irqs(
+                        payload.index,
+                        payload.flags,
+                        payload.start,
+                        payload.count,
+                        fds,
+                    )
                     .map_err(Error::Backend)?;
 
                 let reply = Header {
-                    message_id: cmd.header.message_id,
+                    message_id: header.message_id,
                     command: Command::SetIrqs.into(),
                     flags: HeaderFlags::reply().into(),
                     message_size: size_of::<Header>() as u32,
@@ -974,36 +938,29 @@ impl Server {
                     .map_err(Error::StreamWrite)?;
             }
             Command::RegionRead => {
-                let mut cmd = RegionAccess {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = RegionAccessPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
-                let (region, offset, count) = (cmd.region, cmd.offset, cmd.count);
-
-                if region as usize >= self.regions.len() {
+                if payload.region as usize >= self.regions.len() {
                     return Err(Error::InvalidInput);
                 }
 
-                let mut data = vec![0u8; count as usize];
+                let mut data = vec![0u8; payload.count as usize];
                 backend
-                    .region_read(region, offset, &mut data)
+                    .region_read(payload.region, payload.offset, &mut data)
                     .map_err(Error::Backend)?;
 
                 let reply = RegionAccess {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::RegionRead.into(),
                         flags: HeaderFlags::reply().into(),
-                        message_size: size_of::<RegionAccess>() as u32 + count,
+                        message_size: size_of::<RegionAccess>() as u32 + payload.count,
                         ..Default::default()
                     },
-                    region,
-                    offset,
-                    count,
+                    payload,
                 };
                 stream
                     .write_all(reply.as_bytes())
@@ -1011,15 +968,12 @@ impl Server {
                 stream.write_all(&data).map_err(Error::StreamWrite)?;
             }
             Command::RegionWrite => {
-                let mut cmd = RegionAccess {
-                    header,
-                    ..Default::default()
-                };
+                let mut payload = RegionAccessPayload::default();
                 stream
-                    .read_exact(&mut cmd.as_mut_bytes()[size_of::<Header>()..])
+                    .read_exact(payload.as_mut_bytes())
                     .map_err(Error::StreamRead)?;
 
-                let (region, offset, count) = (cmd.region, cmd.offset, cmd.count);
+                let (region, offset, count) = (payload.region, payload.offset, payload.count);
 
                 if region as usize >= self.regions.len() {
                     return Err(Error::InvalidInput);
@@ -1033,15 +987,17 @@ impl Server {
 
                 let reply = RegionAccess {
                     header: Header {
-                        message_id: cmd.header.message_id,
+                        message_id: header.message_id,
                         command: Command::RegionWrite.into(),
                         flags: HeaderFlags::reply().into(),
                         message_size: size_of::<RegionAccess>() as u32,
                         ..Default::default()
                     },
-                    region,
-                    offset,
-                    count,
+                    payload: RegionAccessPayload {
+                        region,
+                        offset,
+                        count,
+                    },
                 };
                 stream
                     .write_all(reply.as_bytes())

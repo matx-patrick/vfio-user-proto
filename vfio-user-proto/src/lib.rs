@@ -94,8 +94,12 @@ impl TryFrom<u32> for HeaderFlags {
 impl From<HeaderFlags> for u32 {
     fn from(value: HeaderFlags) -> Self {
         (value.ty as u32)
-            | value.no_reply.then_some(HEADER_FLAG_NO_REPLY).unwrap_or(0)
-            | value.error.then_some(HEADER_FLAG_ERROR).unwrap_or(0)
+            | if value.no_reply {
+                HEADER_FLAG_NO_REPLY
+            } else {
+                0
+            }
+            | if value.error { HEADER_FLAG_ERROR } else { 0 }
     }
 }
 
@@ -113,13 +117,32 @@ pub struct Header {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct Version {
     pub header: Header,
+    pub payload: VersionPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct VersionPayload {
     pub major: u16,
     pub minor: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct VersionData {
+    pub capabilities: Option<Capabilities>,
+}
+
+#[derive(Default, Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct Capabilities {
+    pub max_msg_fds: Option<u32>,
+    pub max_data_xfer_size: Option<u32>,
+    pub migration: Option<MigrationCapabilities>,
+}
+
+#[derive(Default, Copy, Clone, Serialize, Deserialize, Debug)]
 pub struct MigrationCapabilities {
     pub pgsize: u32,
+    pub max_bitmap_size: Option<u64>,
 }
 
 bitflags! {
@@ -147,6 +170,12 @@ bitflags! {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct DmaMap {
     pub header: Header,
+    pub payload: DmaMapPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct DmaMapPayload {
     pub argsz: u32,
     pub flags: u32,
     pub offset: u64,
@@ -158,6 +187,12 @@ pub struct DmaMap {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct DmaUnmap {
     pub header: Header,
+    pub payload: DmaUnmapPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct DmaUnmapPayload {
     pub argsz: u32,
     pub flags: u32,
     pub address: u64,
@@ -168,6 +203,12 @@ pub struct DmaUnmap {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct DeviceGetInfo {
     pub header: Header,
+    pub payload: DeviceGetInfoPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct DeviceGetInfoPayload {
     pub argsz: u32,
     pub flags: u32,
     pub num_regions: u32,
@@ -178,13 +219,19 @@ pub struct DeviceGetInfo {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct DeviceGetRegionInfo {
     pub header: Header,
-    pub region_info: vfio_region_info,
+    pub payload: vfio_region_info,
 }
 
 #[repr(C)]
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct RegionAccess {
     pub header: Header,
+    pub payload: RegionAccessPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct RegionAccessPayload {
     pub offset: u64,
     pub region: u32,
     pub count: u32,
@@ -194,6 +241,12 @@ pub struct RegionAccess {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct GetIrqInfo {
     pub header: Header,
+    pub payload: GetIrqInfoPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct GetIrqInfoPayload {
     pub argsz: u32,
     pub flags: u32,
     pub index: u32,
@@ -204,6 +257,12 @@ pub struct GetIrqInfo {
 #[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
 pub struct SetIrqs {
     pub header: Header,
+    pub payload: SetIrqsPayload,
+}
+
+#[repr(C)]
+#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+pub struct SetIrqsPayload {
     pub argsz: u32,
     pub flags: u32,
     pub index: u32,
