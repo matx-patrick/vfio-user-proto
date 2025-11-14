@@ -12,7 +12,6 @@ name = "gpio"
 
 [dependencies]
 vfio-user-proto.workspace = true
-vfio-bindings.workspace = true
 zerocopy.workspace = true
 libc = "0.2.139"
 log = "0.4.17"

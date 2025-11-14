@@ -6,8 +6,10 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
-use vfio_bindings::*;
+use vfio_sys::*;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
+
+pub use vfio_sys;
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug, Default, FromRepr)]

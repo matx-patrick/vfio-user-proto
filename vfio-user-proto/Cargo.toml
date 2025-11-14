@@ -1,6 +1,6 @@
 [package]
 name = "vfio-user-proto"
-version = "0.1.2"
+version = "0.0.0"
 authors = ["The Cloud Hypervisor Authors"]
 edition = "2021"
 license = "Apache-2.0"
@@ -9,7 +9,7 @@ repository = "https://github.com/rust-vmm/vfio-user"
 
 [dependencies]
 zerocopy.workspace = true
-strum = { version = "0.27.2", features = ["derive"] }
+strum.workspace = true
 bitflags.workspace = true
 serde.workspace = true
-vfio-bindings.workspace = true
+vfio-sys.workspace = true
