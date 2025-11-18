@@ -3,7 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
-use libc::{c_void, iovec, EINVAL};
+use libc::EINVAL;
 use log::*;
 use std::ffi::CString;
 use std::fs::File;
@@ -17,9 +17,10 @@ use std::os::unix::{
 use std::path::Path;
 use thiserror::Error;
 use vfio_user_proto::{vfio_sys::*, *};
-use vm_memory::FileOffset;
-use vmm_sys_util::sock_ctrl_msg::ScmSocket;
 use zerocopy::IntoBytes;
+
+mod scm_sock;
+use scm_sock::ScmRightsSocket;
 
 const SERVER_DEFAULT_CAPS: Capabilities = Capabilities {
     max_msg_fds: Some(1),
@@ -40,7 +41,7 @@ pub struct Region {
     pub flags: u32,
     pub index: u32,
     pub size: u64,
-    pub file_offset: Option<FileOffset>,
+    pub file_offset: Option<(File, u64)>,
     pub sparse_areas: Vec<vfio_region_sparse_mmap_area>,
 }
 
@@ -65,10 +66,6 @@ pub enum Error {
     StreamRead(#[source] std::io::Error),
     #[error("Error shutting down stream: {0}")]
     StreamShutdown(#[source] std::io::Error),
-    #[error("Error writing with file descriptors: {0}")]
-    SendWithFd(#[source] vmm_sys_util::errno::Error),
-    #[error("Error reading with file descriptors: {0}")]
-    ReceiveWithFd(#[source] vmm_sys_util::errno::Error),
     #[error("Not a PCI device")]
     NotPciDevice,
     #[error("Error binding to socket: {0}")]
@@ -195,8 +192,8 @@ impl Client {
         debug!("Command: {dma_map:?}");
         self.next_message_id += Wrapping(1);
         self.stream
-            .send_with_fd(dma_map.as_bytes(), fd)
-            .map_err(Error::SendWithFd)?;
+            .sendmsg_fds(dma_map.as_bytes(), &[fd])
+            .map_err(Error::StreamWrite)?;
 
         let mut reply = Header::default();
         self.stream
@@ -306,7 +303,7 @@ impl Client {
                 flags: region_info.flags,
                 index: region_info.index,
                 size: region_info.size,
-                file_offset: fd.map(|fd| FileOffset::new(fd, region_info.offset)),
+                file_offset: fd.map(|fd| (fd, region_info.offset)),
                 sparse_areas,
             });
         }
@@ -348,14 +345,15 @@ impl Client {
             .map_err(Error::StreamWrite)?;
 
         let mut reply = DeviceGetRegionInfo::default();
-        let (_, fd) = self
+        let fd = -1;
+        let (_bytes_recvd, _fds_recvd) = self
             .stream
-            .recv_with_fd(reply.as_mut_bytes())
-            .map_err(Error::ReceiveWithFd)?;
+            .recvmsg_fds(reply.as_mut_bytes(), &mut [fd])
+            .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
         // Retrieve the region info again with capabilities if needed
-        if reply.payload.argsz > std::mem::size_of::<vfio_region_info>() as u32 {
+        let sparse_areas = if reply.payload.argsz > std::mem::size_of::<vfio_region_info>() as u32 {
             get_region_info.payload.argsz = reply.payload.argsz;
             debug!("Command: {get_region_info:?}");
             self.next_message_id += Wrapping(1);
@@ -365,10 +363,10 @@ impl Client {
                 .map_err(Error::StreamWrite)?;
 
             let mut reply = DeviceGetRegionInfo::default();
-            let (_, fd) = self
+            let (_bytes_recvd, _fds_recvd) = self
                 .stream
-                .recv_with_fd(reply.as_mut_bytes())
-                .map_err(Error::ReceiveWithFd)?;
+                .recvmsg_fds(reply.as_mut_bytes(), &mut [fd])
+                .map_err(Error::StreamRead)?;
             debug!("Reply: {reply:?}");
 
             let cap_size = reply.payload.argsz - std::mem::size_of::<vfio_region_info>() as u32;
@@ -381,12 +379,17 @@ impl Client {
                 .read_exact(cap_data.as_mut_bytes())
                 .map_err(Error::StreamRead)?;
 
-            let sparse_areas = Self::parse_region_caps(&cap_data, &reply.payload)?;
-
-            Ok((reply.payload, fd, sparse_areas))
+            Self::parse_region_caps(&cap_data, &reply.payload)?
         } else {
-            Ok((reply.payload, fd, Vec::new()))
-        }
+            vec![]
+        };
+
+        let fp = if fd != -1 {
+            unsafe { Some(File::from_raw_fd(fd)) }
+        } else {
+            None
+        };
+        Ok((reply.payload, fp, sparse_areas))
     }
 
     fn parse_region_caps(
@@ -589,8 +592,8 @@ impl Client {
         self.next_message_id += Wrapping(1);
 
         self.stream
-            .send_with_fds(&[set_irqs.as_bytes()], fds)
-            .map_err(Error::SendWithFd)?;
+            .sendmsg_fds(set_irqs.as_bytes(), fds)
+            .map_err(Error::StreamWrite)?;
 
         let mut reply = Header::default();
         self.stream
@@ -1028,17 +1031,11 @@ impl Server {
 
             // The maximum number of FDs that can be sent is 16 so that is
             // also the maximum that can be received.
-            let mut fds = vec![0; 16];
-            let mut iovecs = vec![iovec {
-                iov_base: header.as_mut_bytes().as_mut_ptr() as *mut c_void,
-                iov_len: header.as_mut_bytes().len(),
-            }];
-            // SAFETY: Safe as the iovect is correctly initialised and fds is big enough
-            let (bytes, fds_received) = unsafe {
-                stream
-                    .recv_with_fds(&mut iovecs, &mut fds)
-                    .map_err(Error::ReceiveWithFd)?
-            };
+            let mut fds = [-1; 16];
+            let (bytes, fds_received) = stream
+                .recvmsg_fds(header.as_mut_bytes(), &mut fds)
+                .map_err(Error::StreamRead)?;
+            assert!(fds_received <= fds.len());
 
             // Other end closed connection
             if bytes == 0 {
@@ -1046,15 +1043,12 @@ impl Server {
                 break;
             }
 
-            fds.resize(fds_received, 0);
-
-            let fds: Vec<File> = fds
+            let files = fds[..fds_received]
                 .iter()
-                // SAFETY: Safe as we have only valid FDs in the vector now
                 .map(|fd| unsafe { File::from_raw_fd(*fd) })
                 .collect();
 
-            if let Err(e) = self.handle_command(backend, &mut stream, header, fds) {
+            if let Err(e) = self.handle_command(backend, &mut stream, header, files) {
                 error!("Error handling command: {:?}: {e}", header.command);
                 let reply = Header {
                     message_id: header.message_id,

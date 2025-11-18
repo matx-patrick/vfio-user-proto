@@ -10,5 +10,4 @@ bitflags = "2.9.4"
 thiserror = "2.0.16"
 serde = { version = "1", features = ["derive"] }
 strum = { version = "0.27.2", features = ["derive"] }
-vmm-sys-util = "0.15.0"
 zerocopy = { version = "0.8.27", features = ["derive"] }
