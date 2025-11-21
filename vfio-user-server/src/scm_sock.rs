@@ -97,7 +97,7 @@ impl CmsgBuf {
         assert_eq!(msghdr.msg_control, self.get().0);
         assert!(msghdr.msg_controllen <= self.get().1);
 
-        let mut cmsg = cmsg_nexthdr(msghdr, std::ptr::null());
+        let mut cmsg = msghdr.msg_control as *const cmsghdr;
         let mut valid_fds = 0;
         while !cmsg.is_null() {
             let hdr = unsafe {

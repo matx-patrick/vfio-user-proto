@@ -105,7 +105,7 @@ impl Client {
 
     fn negotiate_version(&mut self) -> Result<(), Error> {
         let caps = VersionData {
-            capabilities: Some(SERVER_DEFAULT_CAPS),
+            capabilities: SERVER_DEFAULT_CAPS,
         };
 
         let version_data = serde_json::to_string(&caps).map_err(Error::SerializeCapabilites)?;

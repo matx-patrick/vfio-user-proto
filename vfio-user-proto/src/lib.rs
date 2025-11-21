@@ -131,13 +131,16 @@ pub struct VersionPayload {
 
 #[derive(Default, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct VersionData {
-    pub capabilities: Option<Capabilities>,
+    pub capabilities: Capabilities,
 }
 
 #[derive(Default, Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Capabilities {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_msg_fds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub max_data_xfer_size: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub migration: Option<MigrationCapabilities>,
 }
 
