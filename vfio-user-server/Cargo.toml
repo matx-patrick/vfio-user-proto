@@ -12,7 +12,7 @@ name = "gpio"
 
 [dependencies]
 vfio-user-proto.workspace = true
-zerocopy.workspace = true
+bytemuck.workspace = true
 libc = "0.2.139"
 log = "0.4.17"
 serde.workspace = true

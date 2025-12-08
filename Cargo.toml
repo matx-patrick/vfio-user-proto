@@ -7,7 +7,7 @@ vfio-sys.path = "./vfio-sys"
 vfio-user-proto.path = "./vfio-user-proto"
 
 bitflags = "2.9.4"
+bytemuck = { version = "1.22.0", features = ["derive"] }
 thiserror = "2.0.16"
 serde = { version = "1", features = ["derive"] }
 strum = { version = "0.27.2", features = ["derive"] }
-zerocopy = { version = "0.8.27", features = ["derive"] }

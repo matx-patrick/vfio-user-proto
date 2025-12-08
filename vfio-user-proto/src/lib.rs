@@ -4,10 +4,10 @@
 //
 
 use bitflags::bitflags;
+use bytemuck::{AnyBitPattern, NoUninit};
 use serde::{Deserialize, Serialize};
 use strum::FromRepr;
 use vfio_sys::*;
-use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 pub use vfio_sys;
 
@@ -106,7 +106,7 @@ impl From<HeaderFlags> for u32 {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct Header {
     pub message_id: u16,
     pub command: u16,
@@ -116,14 +116,14 @@ pub struct Header {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct Version {
     pub header: Header,
     pub payload: VersionPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct VersionPayload {
     pub major: u16,
     pub minor: u16,
@@ -172,14 +172,14 @@ bitflags! {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DmaMap {
     pub header: Header,
     pub payload: DmaMapPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DmaMapPayload {
     pub argsz: u32,
     pub flags: u32,
@@ -189,14 +189,14 @@ pub struct DmaMapPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DmaUnmap {
     pub header: Header,
     pub payload: DmaUnmapPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DmaUnmapPayload {
     pub argsz: u32,
     pub flags: u32,
@@ -205,14 +205,14 @@ pub struct DmaUnmapPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DeviceGetInfo {
     pub header: Header,
     pub payload: DeviceGetInfoPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DeviceGetInfoPayload {
     pub argsz: u32,
     pub flags: u32,
@@ -221,21 +221,21 @@ pub struct DeviceGetInfoPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DeviceGetRegionInfo {
     pub header: Header,
     pub payload: vfio_region_info,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct RegionAccess {
     pub header: Header,
     pub payload: RegionAccessPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct RegionAccessPayload {
     pub offset: u64,
     pub region: u32,
@@ -243,14 +243,14 @@ pub struct RegionAccessPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct GetIrqInfo {
     pub header: Header,
     pub payload: GetIrqInfoPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct GetIrqInfoPayload {
     pub argsz: u32,
     pub flags: u32,
@@ -259,14 +259,14 @@ pub struct GetIrqInfoPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct SetIrqs {
     pub header: Header,
     pub payload: SetIrqsPayload,
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct SetIrqsPayload {
     pub argsz: u32,
     pub flags: u32,
@@ -276,7 +276,7 @@ pub struct SetIrqsPayload {
 }
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, Debug, FromBytes, IntoBytes, Immutable)]
+#[derive(Default, Clone, Copy, Debug, NoUninit, AnyBitPattern)]
 pub struct DeviceReset {
     pub header: Header,
 }

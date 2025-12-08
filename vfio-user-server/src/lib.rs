@@ -3,6 +3,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+use bytemuck::{bytes_of, bytes_of_mut};
 use libc::EINVAL;
 use log::*;
 use std::ffi::CString;
@@ -17,7 +18,6 @@ use std::os::unix::{
 use std::path::Path;
 use thiserror::Error;
 use vfio_user_proto::{vfio_sys::*, *};
-use zerocopy::IntoBytes;
 
 mod scm_sock;
 use scm_sock::ScmRightsSocket;
@@ -124,7 +124,7 @@ impl Client {
 
         let version_data = CString::new(version_data.as_bytes()).unwrap();
         let bufs = vec![
-            IoSlice::new(version.as_bytes()),
+            IoSlice::new(bytes_of(&version)),
             IoSlice::new(version_data.as_bytes_with_nul()),
         ];
 
@@ -143,7 +143,7 @@ impl Client {
 
         let mut server_version: Version = Version::default();
         self.stream
-            .read_exact(server_version.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut server_version))
             .map_err(Error::StreamRead)?;
 
         debug!("Reply: {server_version:?}");
@@ -151,7 +151,7 @@ impl Client {
         let mut server_version_data =
             vec![0; server_version.header.message_size as usize - size_of::<Version>()];
         self.stream
-            .read_exact(server_version_data.as_mut_bytes())
+            .read_exact(&mut server_version_data)
             .map_err(Error::StreamRead)?;
 
         let server_caps: VersionData =
@@ -192,12 +192,12 @@ impl Client {
         debug!("Command: {dma_map:?}");
         self.next_message_id += Wrapping(1);
         self.stream
-            .sendmsg_fds(dma_map.as_bytes(), &[fd])
+            .sendmsg_fds(bytes_of(&dma_map), &[fd])
             .map_err(Error::StreamWrite)?;
 
         let mut reply = Header::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
@@ -223,12 +223,12 @@ impl Client {
         debug!("Command: {dma_unmap:?}");
         self.next_message_id += Wrapping(1);
         self.stream
-            .write_all(dma_unmap.as_bytes())
+            .write_all(bytes_of(&dma_unmap))
             .map_err(Error::StreamWrite)?;
 
         let mut reply = DmaUnmap::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
@@ -248,12 +248,12 @@ impl Client {
         debug!("Command: {reset:?}");
         self.next_message_id += Wrapping(1);
         self.stream
-            .write_all(reset.as_bytes())
+            .write_all(bytes_of(&reset))
             .map_err(Error::StreamWrite)?;
 
         let mut reply = Header::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
@@ -278,12 +278,12 @@ impl Client {
         self.next_message_id += Wrapping(1);
 
         self.stream
-            .write_all(get_info.as_bytes())
+            .write_all(bytes_of(&get_info))
             .map_err(Error::StreamWrite)?;
 
         let mut replymsg = DeviceGetInfo::default();
         self.stream
-            .read_exact(replymsg.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut replymsg))
             .map_err(Error::StreamRead)?;
         let reply = &replymsg.payload;
         debug!("Reply: {reply:?}");
@@ -341,14 +341,14 @@ impl Client {
         self.next_message_id += Wrapping(1);
 
         self.stream
-            .write_all(get_region_info.as_bytes())
+            .write_all(bytes_of(&get_region_info))
             .map_err(Error::StreamWrite)?;
 
         let mut reply = DeviceGetRegionInfo::default();
         let fd = -1;
         let (_bytes_recvd, _fds_recvd) = self
             .stream
-            .recvmsg_fds(reply.as_mut_bytes(), &mut [fd])
+            .recvmsg_fds(bytes_of_mut(&mut reply), &mut [fd])
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
@@ -359,13 +359,13 @@ impl Client {
             self.next_message_id += Wrapping(1);
 
             self.stream
-                .write_all(get_region_info.as_bytes())
+                .write_all(bytes_of(&get_region_info))
                 .map_err(Error::StreamWrite)?;
 
             let mut reply = DeviceGetRegionInfo::default();
             let (_bytes_recvd, _fds_recvd) = self
                 .stream
-                .recvmsg_fds(reply.as_mut_bytes(), &mut [fd])
+                .recvmsg_fds(bytes_of_mut(&mut reply), &mut [fd])
                 .map_err(Error::StreamRead)?;
             debug!("Reply: {reply:?}");
 
@@ -374,9 +374,9 @@ impl Client {
                 cap_size,
                 reply.header.message_size - size_of::<DeviceGetRegionInfo>() as u32
             );
-            let mut cap_data = vec![0; cap_size as usize];
+            let mut cap_data = vec![0u8; cap_size as usize];
             self.stream
-                .read_exact(cap_data.as_mut_bytes())
+                .read_exact(&mut cap_data)
                 .map_err(Error::StreamRead)?;
 
             Self::parse_region_caps(&cap_data, &reply.payload)?
@@ -481,12 +481,12 @@ impl Client {
         debug!("Command: {region_read:?}");
         self.next_message_id += Wrapping(1);
         self.stream
-            .write_all(region_read.as_bytes())
+            .write_all(bytes_of(&region_read))
             .map_err(Error::StreamWrite)?;
 
         let mut reply = RegionAccess::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
         self.stream.read_exact(data).map_err(Error::StreamRead)?;
@@ -511,7 +511,7 @@ impl Client {
         debug!("Command: {region_write:?}");
         self.next_message_id += Wrapping(1);
 
-        let bufs = vec![IoSlice::new(region_write.as_bytes()), IoSlice::new(data)];
+        let bufs = vec![IoSlice::new(bytes_of(&region_write)), IoSlice::new(data)];
 
         // TODO: Use write_all_vectored() when ready
         let _ = self
@@ -521,7 +521,7 @@ impl Client {
 
         let mut reply = RegionAccess::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
         Ok(())
@@ -547,12 +547,12 @@ impl Client {
         self.next_message_id += Wrapping(1);
 
         self.stream
-            .write_all(get_irq_info.as_bytes())
+            .write_all(bytes_of(&get_irq_info))
             .map_err(Error::StreamWrite)?;
 
         let mut replymsg = GetIrqInfo::default();
         self.stream
-            .read_exact(replymsg.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut replymsg))
             .map_err(Error::StreamRead)?;
         let reply = &replymsg.payload;
         debug!("Reply: {reply:?}");
@@ -592,12 +592,12 @@ impl Client {
         self.next_message_id += Wrapping(1);
 
         self.stream
-            .sendmsg_fds(set_irqs.as_bytes(), fds)
+            .sendmsg_fds(bytes_of(&set_irqs), fds)
             .map_err(Error::StreamWrite)?;
 
         let mut reply = Header::default();
         self.stream
-            .read_exact(reply.as_mut_bytes())
+            .read_exact(bytes_of_mut(&mut reply))
             .map_err(Error::StreamRead)?;
         debug!("Reply: {reply:?}");
 
@@ -703,7 +703,7 @@ impl Server {
                 // TODO: Make version/capabilities configurable
                 let mut client_version = VersionPayload::default();
                 stream
-                    .read_exact(client_version.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut client_version))
                     .map_err(Error::StreamRead)?;
 
                 let mut raw_version_data =
@@ -740,7 +740,7 @@ impl Server {
                 let server_version_data = CString::new(server_version_data.as_bytes()).unwrap();
 
                 let bufs = vec![
-                    IoSlice::new(server_version.as_bytes()),
+                    IoSlice::new(bytes_of(&server_version)),
                     IoSlice::new(server_version_data.as_bytes_with_nul()),
                 ];
 
@@ -757,7 +757,7 @@ impl Server {
             Command::DmaMap => {
                 let mut payload = DmaMapPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 let mut fds = fds;
@@ -786,13 +786,13 @@ impl Server {
                     ..Default::default()
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::DmaUnmap => {
                 let mut payload = DmaUnmapPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 backend
@@ -814,13 +814,13 @@ impl Server {
                     payload,
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::DeviceGetInfo => {
                 let mut payload = DeviceGetInfoPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 let reply = DeviceGetInfo {
@@ -845,13 +845,13 @@ impl Server {
                     },
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::DeviceGetRegionInfo => {
                 let mut payload = vfio_region_info::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 if payload.index as usize >= self.regions.len() {
@@ -870,13 +870,13 @@ impl Server {
                     payload: self.regions[payload.index as usize],
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::GetIrqInfo => {
                 let mut payload = GetIrqInfoPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 if payload.index as usize >= self.irqs.len() {
@@ -901,13 +901,13 @@ impl Server {
                     },
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::SetIrqs => {
                 let mut payload = SetIrqsPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 if payload.index as usize >= self.irqs.len() {
@@ -936,13 +936,13 @@ impl Server {
                     ..Default::default()
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::RegionRead => {
                 let mut payload = RegionAccessPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 if payload.region as usize >= self.regions.len() {
@@ -965,14 +965,14 @@ impl Server {
                     payload,
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
                 stream.write_all(&data).map_err(Error::StreamWrite)?;
             }
             Command::RegionWrite => {
                 let mut payload = RegionAccessPayload::default();
                 stream
-                    .read_exact(payload.as_mut_bytes())
+                    .read_exact(bytes_of_mut(&mut payload))
                     .map_err(Error::StreamRead)?;
 
                 let (region, offset, count) = (payload.region, payload.offset, payload.count);
@@ -1002,7 +1002,7 @@ impl Server {
                     },
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
             Command::DeviceReset => {
@@ -1015,7 +1015,7 @@ impl Server {
                     ..Default::default()
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
         }
@@ -1033,7 +1033,7 @@ impl Server {
             // also the maximum that can be received.
             let mut fds = [-1; 16];
             let (bytes, fds_received) = stream
-                .recvmsg_fds(header.as_mut_bytes(), &mut fds)
+                .recvmsg_fds(bytes_of_mut(&mut header), &mut fds)
                 .map_err(Error::StreamRead)?;
             assert!(fds_received <= fds.len());
 
@@ -1062,7 +1062,7 @@ impl Server {
                     },
                 };
                 stream
-                    .write_all(reply.as_bytes())
+                    .write_all(bytes_of(&reply))
                     .map_err(Error::StreamWrite)?;
             }
         }
